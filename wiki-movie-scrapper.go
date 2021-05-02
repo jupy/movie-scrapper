@@ -6,9 +6,12 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
 	googlesearch "github.com/rocketlaunchr/google-search"
+	"golang.org/x/time/rate"
 )
 
 type Movie struct {
@@ -65,6 +68,15 @@ func VisitWikipedia(link string) Movie {
 		colly.AllowedDomains("ru.wikipedia.org"),
 	)
 
+	c.Limit(&colly.LimitRule{
+		// Filter domains affected by this rule
+		DomainGlob: "ru.wikipedia.org/*",
+		// Set a delay between requests to these domains
+		Delay: 1 * time.Second,
+		// Add an additional random delay
+		RandomDelay: 1 * time.Second,
+	})
+
 	c.OnHTML(".infobox tbody tr:nth-child(1)", func(e *colly.HTMLElement) {
 		movie.Name = e.Text
 	})
@@ -94,8 +106,29 @@ func VisitWikipedia(link string) Movie {
 			})
 		}
 		if title == "Продюсер" {
-			e.ForEach("td span > a", func(i int, a *colly.HTMLElement) {
+			e.ForEach("td span", func(i int, a *colly.HTMLElement) {
 				movie.Producers = append(movie.Producers, a.Text)
+				html, _ := a.DOM.Html()
+				lines := strings.Split(html, "<br>")
+				for _, line := range lines {
+					dom, err := goquery.NewDocument(line)
+					if err != nil {
+						fmt.Printf("something went wrong: %v\n", err)
+					} else {
+						dom.Each(func(i int, sel *goquery.Selection) {
+							fmt.Printf("> Item: %s\n", sel.Text)
+						})
+					}
+				}
+
+				/* 				span := a.DOM.Eq(1)
+				   				fmt.Printf("> html: %s\n", html)
+				   				span.Each(func(i int, sel *goquery.Selection) {
+				   					fmt.Printf("> i: %d\n", i)
+				   					for _, n := range sel.Nodes {
+				   						fmt.Printf("> Item (%s): %s\n", n.Type, n.Data)
+				   					}
+				   				}) */
 			})
 		}
 		if strings.Contains(title, "Автор") && strings.Contains(title, "сценария") {
@@ -103,7 +136,7 @@ func VisitWikipedia(link string) Movie {
 				movie.Screenwriters = append(movie.Screenwriters, a.Text)
 			})
 		}
-		if title == "Кинокомпания" {
+		if title == "Кинокомпания" || title == "Студия" {
 			e.ForEach("td span * ", func(i int, a *colly.HTMLElement) {
 				if a.Text != "" {
 					movie.Companies = append(movie.Companies, a.Text)
@@ -111,12 +144,7 @@ func VisitWikipedia(link string) Movie {
 			})
 		}
 		if title == "Страна" {
-			e.ForEach("td span.country-name", func(i int, a *colly.HTMLElement) {
-				if a.Text != "" {
-					movie.Countries = append(movie.Countries, a.Text)
-				}
-			})
-			e.ForEach("td span a.mw-redirect", func(i int, a *colly.HTMLElement) {
+			e.ForEach("td a", func(i int, a *colly.HTMLElement) {
 				if a.Text != "" {
 					movie.Countries = append(movie.Countries, a.Text)
 				}
@@ -147,6 +175,15 @@ func VisitKinoMail(link string) string {
 		colly.AllowedDomains("kino.mail.ru"),
 	)
 
+	c.Limit(&colly.LimitRule{
+		// Filter domains affected by this rule
+		DomainGlob: "kino.mail.ru/*",
+		// Set a delay between requests to these domains
+		Delay: 1 * time.Second,
+		// Add an additional random delay
+		RandomDelay: 1 * time.Second,
+	})
+
 	c.OnHTML("div.p-movie-info__content p", func(e *colly.HTMLElement) {
 		summary = e.Text
 	})
@@ -164,6 +201,8 @@ func SearchGoogle(query string, site string) string {
 		OverLimit: false,
 		UserAgent: "Chrome/61.0.3163.100",
 	}
+
+	googlesearch.RateLimit = rate.NewLimiter(1, 3)
 	links, err := googlesearch.Search(ctx, q, opts)
 	if err != nil {
 		fmt.Printf("something went wrong: %v\n", err)
@@ -178,15 +217,8 @@ func SearchGoogle(query string, site string) string {
 	return link
 }
 
-func ScrapeMovie(query string) Movie {
+func ScrapeMovieInner(query string, wikipedia string, kinopoisk string, mail string) Movie {
 	var movie Movie
-	var wikipedia string
-	var kinopoisk string
-	var mail string
-
-	wikipedia = SearchGoogle(query, "ru.wikipedia.org")
-	kinopoisk = SearchGoogle(query, "kinopoisk.ru")
-	mail = SearchGoogle(query, "kino.mail.ru")
 
 	movie = VisitWikipedia(wikipedia)
 	movie.WikipediaUrl = wikipedia
@@ -196,8 +228,19 @@ func ScrapeMovie(query string) Movie {
 	return movie
 }
 
+func ScrapeMovie(query string) Movie {
+	wikipedia := SearchGoogle(query, "ru.wikipedia.org")
+	kinopoisk := SearchGoogle(query, "kinopoisk.ru")
+	mail := SearchGoogle(query, "kino.mail.ru")
+
+	return ScrapeMovieInner(query, wikipedia, kinopoisk, mail)
+}
+
 func main() {
-	movie := ScrapeMovie("Белоснежка")
+	//w := "https://ru.wikipedia.org/wiki/%D0%91%D0%B5%D0%BB%D0%BE%D1%81%D0%BD%D0%B5%D0%B6%D0%BA%D0%B0_%D0%B8_%D1%81%D0%B5%D0%BC%D1%8C_%D0%B3%D0%BD%D0%BE%D0%BC%D0%BE%D0%B2_(%D0%BC%D1%83%D0%BB%D1%8C%D1%82%D1%84%D0%B8%D0%BB%D1%8C%D0%BC)"
+	//w := "https://ru.wikipedia.org/wiki/%D0%9A%D1%80%D0%B5%D0%BF%D0%BA%D0%B8%D0%B9_%D0%BE%D1%80%D0%B5%D1%88%D0%B5%D0%BA_(%D1%84%D0%B8%D0%BB%D1%8C%D0%BC,_1988)"
+	w := "https://ru.wikipedia.org/wiki/%D0%94%D0%B5%D0%B2%D1%8F%D1%82%D1%8C_%D1%8F%D1%80%D0%B4%D0%BE%D0%B2"
+	movie := ScrapeMovieInner("Белоснежка", w, "", "")
 	movie.Print()
 
 	/* 	fmt.Println("---")
