@@ -62,10 +62,10 @@ func (movie *Movie) Print() {
 }
 
 func firstRune(str string) (r rune) {
-  for _, r = range str {
-      return
-  }
-  return
+	for _, r = range str {
+		return
+	}
+	return
 }
 
 func ParseList(html string) []string {
@@ -79,7 +79,7 @@ func ParseList(html string) []string {
 				for _, item := range div.Split(sel.Text(), -1) {
 					item = strings.Trim(item, " \t")
 					if len(item) == 0 {
-						continue;
+						continue
 					} else if unicode.IsUpper(firstRune(item)) {
 						list = append(list, item)
 					}
@@ -136,7 +136,6 @@ func VisitWikipedia(link string) Movie {
 			e.ForEach("td span", func(i int, a *colly.HTMLElement) {
 				html, _ := a.DOM.Html()
 				movie.Directors = ParseList(html)
-				/*movie.Director = a.Text*/
 			})
 		}
 		if title == "Продюсер" {
@@ -149,7 +148,6 @@ func VisitWikipedia(link string) Movie {
 			e.ForEach("td span > a", func(i int, a *colly.HTMLElement) {
 				html, _ := a.DOM.Html()
 				movie.Screenwriters = ParseList(html)
-				/*movie.Screenwriters = append(movie.Screenwriters, a.Text)*/
 			})
 		}
 		if title == "Кинокомпания" || title == "Студия" {
@@ -208,8 +206,8 @@ func VisitKinoMail(link string) string {
 }
 
 var GoogleDomains = map[string]string{
-	"us":  "https://www.google.com/search?q=",
-	"ru":  "https://www.google.ru/search?q=",
+	"us": "https://www.google.com/search?q=",
+	"ru": "https://www.google.ru/search?q=",
 }
 
 func Query(searchTerm string, countryCode string, languageCode string, limit int, start int) string {
@@ -371,8 +369,9 @@ func SearchGoogle(query string, site string) string {
 func ScrapeMovieInner(wikipedia string, kinopoisk string, mail string) Movie {
 	var movie Movie
 
-	movie = VisitWikipedia(wikipedia)
-	movie.WikipediaUrl = wikipedia
+	w, _ := url.QueryUnescape(wikipedia)
+	movie = VisitWikipedia(w)
+	movie.WikipediaUrl = w
 	movie.KinopoiskUrl = kinopoisk
 	movie.MailUrl = mail
 	movie.Summary = VisitKinoMail(mail)
@@ -416,10 +415,10 @@ func SearchWiki(query string) string {
 	//c.OnHTML("div.mw-search-result-heading", func(e *colly.HTMLElement) {
 	c.OnHTML(".jump-to-nav", func(e *colly.HTMLElement) {
 		fmt.Printf("!!! \n")
-/*		var r SearchWikiResult
-		r.Title = e.Text
-		r.Url = e.Attr("href")
-		res = append(res, r)*/
+		/*		var r SearchWikiResult
+				r.Title = e.Text
+				r.Url = e.Attr("href")
+				res = append(res, r)*/
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
@@ -447,27 +446,27 @@ func main() {
 	movie = ScrapeMovieInner(w, "", "")
 	movie.Print()
 
-/* 	fmt.Println("---")
-	w = "https://ru.wikipedia.org/wiki/%D0%9A%D1%80%D0%B5%D0%BF%D0%BA%D0%B8%D0%B9_%D0%BE%D1%80%D0%B5%D1%88%D0%B5%D0%BA_(%D1%84%D0%B8%D0%BB%D1%8C%D0%BC,_1988)"
-	movie = ScrapeMovieInner(w, "", "")
-	movie.Print()
+	/* 	fmt.Println("---")
+		w = "https://ru.wikipedia.org/wiki/%D0%9A%D1%80%D0%B5%D0%BF%D0%BA%D0%B8%D0%B9_%D0%BE%D1%80%D0%B5%D1%88%D0%B5%D0%BA_(%D1%84%D0%B8%D0%BB%D1%8C%D0%BC,_1988)"
+		movie = ScrapeMovieInner(w, "", "")
+		movie.Print()
 
- 	fmt.Println("---")
-	w = "https://ru.wikipedia.org/wiki/%D0%94%D0%B5%D0%B2%D1%8F%D1%82%D1%8C_%D1%8F%D1%80%D0%B4%D0%BE%D0%B2"
-	movie = ScrapeMovieInner(w, "", "")
-	movie.Print()*/
+	 	fmt.Println("---")
+		w = "https://ru.wikipedia.org/wiki/%D0%94%D0%B5%D0%B2%D1%8F%D1%82%D1%8C_%D1%8F%D1%80%D0%B4%D0%BE%D0%B2"
+		movie = ScrapeMovieInner(w, "", "")
+		movie.Print()*/
 
-/*   	movie := ScrapeMovie("9 ярдов")
-   	movie.Print()
+	/*   	movie := ScrapeMovie("9 ярдов")
+	  	movie.Print()
 
- 	fmt.Println("---")
+		fmt.Println("---")
 
-   	movie = ScrapeMovie("Крепкий орешек")
-   	movie.Print()*/
+	  	movie = ScrapeMovie("Крепкий орешек")
+	  	movie.Print()*/
 
-/*   	movie := ScrapeMovie("Белоснежка (1937)")
-   	movie.Print()*/
-//	SearchWiki("Белоснежка")
-/*	movie = ScrapeMovieInner(w, "", "")
-	movie.Print()*/
+	/*   	movie := ScrapeMovie("Белоснежка (1937)")
+	     	movie.Print()*/
+	//SearchWiki("Белоснежка")
+	/*	movie = ScrapeMovieInner(w, "", "")
+		movie.Print()*/
 }
