@@ -1,18 +1,18 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
 	"unicode"
+	"os/exec"
+	"encoding/json"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocolly/colly"
-	googlesearch "github.com/rocketlaunchr/google-search"
-	"golang.org/x/time/rate"
 )
 
 type Movie struct {
@@ -205,165 +205,25 @@ func VisitKinoMail(link string) string {
 	return summary
 }
 
-var GoogleDomains = map[string]string{
-	"us": "https://www.google.com/search?q=",
-	"ru": "https://www.google.ru/search?q=",
-}
-
-func Query(searchTerm string, countryCode string, languageCode string, limit int, start int) string {
-	searchTerm = strings.Trim(searchTerm, " ")
-	searchTerm = strings.Replace(searchTerm, " ", "+", -1)
-	countryCode = strings.ToLower(countryCode)
-
-	var url string
-
-	if googleBase, found := GoogleDomains[countryCode]; found {
-		if start == 0 {
-			url = fmt.Sprintf("%s%s&hl=%s", googleBase, searchTerm, languageCode)
-		} else {
-			url = fmt.Sprintf("%s%s&hl=%s&start=%d", googleBase, searchTerm, languageCode, start)
-		}
-	} else {
-		if start == 0 {
-			url = fmt.Sprintf("%s%s&hl=%s", GoogleDomains["us"], searchTerm, languageCode)
-		} else {
-			url = fmt.Sprintf("%s%s&hl=%s&start=%d", GoogleDomains["us"], searchTerm, languageCode, start)
-		}
-	}
-
-	if limit != 0 {
-		url = fmt.Sprintf("%s&num=%d", url, limit)
-	}
-
-	return url
-}
-
-func SearchGoogleInner(ctx context.Context, searchTerm string, opts ...googlesearch.SearchOptions) ([]googlesearch.Result, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	if err := googlesearch.RateLimit.Wait(ctx); err != nil {
-		return nil, err
-	}
-
-	//appe := appengine.NewContext(r)
-	c := colly.NewCollector(colly.MaxDepth(1))
-	//c.Appengine(appe)
-	c.Limit(&colly.LimitRule{
-		// Set a delay between requests to these domains
-		Delay: 1 * time.Second,
-		// Add an additional random delay
-		RandomDelay: 1 * time.Second,
-	})
-
-	if len(opts) == 0 {
-		opts = append(opts, googlesearch.SearchOptions{})
-	}
-
-	if opts[0].UserAgent == "" {
-		c.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
-	} else {
-		c.UserAgent = opts[0].UserAgent
-	}
-
-	var lc string
-	if opts[0].LanguageCode == "" {
-		lc = "en"
-	} else {
-		lc = opts[0].LanguageCode
-	}
-
-	results := []googlesearch.Result{}
-	var rErr error
-	rank := 1
-
-	c.OnRequest(func(r *colly.Request) {
-		if err := ctx.Err(); err != nil {
-			r.Abort()
-			rErr = err
-			return
-		}
-	})
-
-	c.OnError(func(r *colly.Response, err error) {
-		rErr = err
-	})
-
-	// https://www.w3schools.com/cssref/css_selectors.asp
-	c.OnHTML("div.g", func(e *colly.HTMLElement) {
-
-		sel := e.DOM
-
-		linkHref, _ := sel.Find("a").Attr("href")
-		linkText := strings.TrimSpace(linkHref)
-		titleText := strings.TrimSpace(sel.Find("div > div > a > h3").Text())
-
-		descText := strings.TrimSpace(sel.Find("div > div > div > span > span").Text())
-
-		if linkText != "" && linkText != "#" {
-			result := googlesearch.Result{
-				Rank:        rank,
-				URL:         linkText,
-				Title:       titleText,
-				Description: descText,
-			}
-			results = append(results, result)
-			rank += 1
-		}
-	})
-
-	limit := opts[0].Limit
-	if opts[0].OverLimit {
-		limit = int(float64(opts[0].Limit) * 1.5)
-	}
-
-	query := Query(searchTerm, opts[0].CountryCode, lc, limit, opts[0].Start)
-	c.Visit(query)
-
-	if rErr != nil {
-		if strings.Contains(rErr.Error(), "Too Many Requests") {
-			return nil, googlesearch.ErrBlocked
-		}
-		return nil, rErr
-	}
-
-	// Reduce results to max limit
-	if opts[0].Limit != 0 && len(results) > opts[0].Limit {
-		return results[:opts[0].Limit], nil
-	}
-
-	return results, nil
-}
-
 func SearchGoogle(query string, site string) string {
-
-	ctx := context.Background()
-	q := query + " site:" + site
-	opts := googlesearch.SearchOptions{
-		Limit:       1,
-		OverLimit:   false,
-		CountryCode: "ru",
-		UserAgent:   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.105 Safari/537.36",
-	}
-
-	fmt.Printf("%v\n", Query(q, opts.CountryCode, "en", 1, opts.Start))
-
-	googlesearch.RateLimit = rate.NewLimiter(1, 3)
-	/*links, err := googlesearch.Search(ctx, q, opts)*/
-	links, err := SearchGoogleInner(ctx, q, opts)
+	s := "-w " + site
+	out, err := exec.Command("googler", "-n 1", "--np", "--json", s, query).Output()
 	if err != nil {
-		fmt.Printf("something went wrong: %v\n", err)
-		return ""
+		log.Fatal(err)
+	    panic(err)
 	}
 
-	if len(links) < 1 {
-		fmt.Printf("there is no any search reults: %v, %v\n", links, err)
-		return ""
+	var dat []map[string]interface{}
+
+	if err := json.Unmarshal(out, &dat); err != nil {
+	    panic(err)
 	}
 
-	link, _ := url.QueryUnescape(links[0].URL)
-	return link
+	var str string
+	for _, d := range dat {
+		str, _ = url.QueryUnescape(d["url"].(string))
+	}
+	return str
 }
 
 func ScrapeMovieInner(wikipedia string, kinopoisk string, mail string) Movie {
@@ -380,16 +240,16 @@ func ScrapeMovieInner(wikipedia string, kinopoisk string, mail string) Movie {
 
 func ScrapeMovie(query string) Movie {
 	wikipedia := SearchGoogle(query, "ru.wikipedia.org")
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	kinopoisk := SearchGoogle(query, "kinopoisk.ru")
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 	mail := SearchGoogle(query, "kino.mail.ru")
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	return ScrapeMovieInner(wikipedia, kinopoisk, mail)
 }
 
-type SearchWikiResult struct {
+/*type SearchWikiResult struct {
 	Url     string
 	Title   string
 	Summary string
@@ -411,14 +271,8 @@ func SearchWiki(query string) string {
 		RandomDelay: 1 * time.Second,
 	})
 
-	//c.OnHTML("li.mw-search-result > div > a[href]", func(e *colly.HTMLElement) {
-	//c.OnHTML("div.mw-search-result-heading", func(e *colly.HTMLElement) {
 	c.OnHTML(".jump-to-nav", func(e *colly.HTMLElement) {
 		fmt.Printf("!!! \n")
-		/*		var r SearchWikiResult
-				r.Title = e.Text
-				r.Url = e.Attr("href")
-				res = append(res, r)*/
 	})
 
 	c.OnError(func(_ *colly.Response, err error) {
@@ -436,37 +290,21 @@ func SearchWiki(query string) string {
 	}
 
 	return q
-}
+}*/
 
 func main() {
 	var movie Movie
-	var w string
 
-	w = "https://ru.wikipedia.org/wiki/%D0%91%D0%B5%D0%BB%D0%BE%D1%81%D0%BD%D0%B5%D0%B6%D0%BA%D0%B0_%D0%B8_%D1%81%D0%B5%D0%BC%D1%8C_%D0%B3%D0%BD%D0%BE%D0%BC%D0%BE%D0%B2_(%D0%BC%D1%83%D0%BB%D1%8C%D1%82%D1%84%D0%B8%D0%BB%D1%8C%D0%BC)"
-	movie = ScrapeMovieInner(w, "", "")
-	movie.Print()
+   	movie = ScrapeMovie("9 ярдов")
+  	movie.Print()
 
-	/* 	fmt.Println("---")
-		w = "https://ru.wikipedia.org/wiki/%D0%9A%D1%80%D0%B5%D0%BF%D0%BA%D0%B8%D0%B9_%D0%BE%D1%80%D0%B5%D1%88%D0%B5%D0%BA_(%D1%84%D0%B8%D0%BB%D1%8C%D0%BC,_1988)"
-		movie = ScrapeMovieInner(w, "", "")
-		movie.Print()
+	fmt.Println("---")
 
-	 	fmt.Println("---")
-		w = "https://ru.wikipedia.org/wiki/%D0%94%D0%B5%D0%B2%D1%8F%D1%82%D1%8C_%D1%8F%D1%80%D0%B4%D0%BE%D0%B2"
-		movie = ScrapeMovieInner(w, "", "")
-		movie.Print()*/
+  	movie = ScrapeMovie("Крепкий орешек 1988")
+  	movie.Print()
 
-	/*   	movie := ScrapeMovie("9 ярдов")
-	  	movie.Print()
+	fmt.Println("---")
 
-		fmt.Println("---")
-
-	  	movie = ScrapeMovie("Крепкий орешек")
-	  	movie.Print()*/
-
-	/*   	movie := ScrapeMovie("Белоснежка (1937)")
-	     	movie.Print()*/
-	//SearchWiki("Белоснежка")
-	/*	movie = ScrapeMovieInner(w, "", "")
-		movie.Print()*/
+  	movie = ScrapeMovie("Белоснежка (1937)")
+  	movie.Print()
 }
