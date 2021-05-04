@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"bufio"
+	"os"
 	"os/exec"
 	"encoding/json"
 
@@ -59,6 +61,131 @@ func (movie *Movie) Print() {
 	fmt.Printf("Mail:           %s\n", movie.MailUrl)
 	fmt.Printf("Summary:\n")
 	fmt.Printf("%s\n", movie.Summary)
+}
+
+func check(e error) {
+    if e != nil {
+        panic(e)
+    }
+}
+
+func (movie *Movie) PrintMarkdown() {
+	name := movie.InitName + " (" + movie.Year + ").md"
+	f, err := os.Create(name)
+    check(err)
+    defer f.Close()
+
+    w := bufio.NewWriter(f)
+
+    _, err = fmt.Fprintf(w, "---\n")
+    check(err)
+    _, err = fmt.Fprintf(w, "created: %s\n", time.Now().Format("2006.01.02 15:04"))
+    check(err)
+    _, err = fmt.Fprintf(w, "alias: \"%s (%s)\"\n", movie.Name, movie.Year)
+    check(err)
+    _, err = fmt.Fprintf(w, "---\n\n")
+    check(err)
+
+
+    _, err = fmt.Fprintf(w, "<div style=\"float:right; padding: 10px\"><img width=200px src=\"%s\"/></div>\n\n", movie.PosterUrl)
+    check(err)
+    _, err = fmt.Fprintf(w, "![[movie-beginning.png|50]]\n")
+    check(err)
+    _, err = fmt.Fprintf(w, "# %s\n", movie.Name)
+    check(err)
+
+	_, err = fmt.Fprintf(w, "**original name:** %s\n", movie.InitName)
+	check(err)
+	_, err = fmt.Fprintf(w, "**year:** #y%s\n", movie.Year)
+	check(err)
+	_, err = fmt.Fprintf(w, "**type:** #movie\n")
+	check(err)
+	_, err = fmt.Fprintf(w, "**status:** #inbox\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**director:**")
+	check(err)
+	for _, director := range movie.Directors {
+		_, err = fmt.Fprintf(w, " [[%s]]", director)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**producer:**")
+	check(err)
+	for _, producer := range movie.Producers {
+		_, err = fmt.Fprintf(w, " [[%s]]", producer)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**screenwriter:**")
+	check(err)
+	for _, screenwriter := range movie.Screenwriters {
+		_, err = fmt.Fprintf(w, " [[%s]]", screenwriter)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**rate:**\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**company:**")
+	check(err)
+	for _, company := range movie.Companies {
+		_, err = fmt.Fprintf(w, " [[%s]]", company)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**country:**")
+	check(err)
+	for _, country := range movie.Countries {
+		_, err = fmt.Fprintf(w, " [[%s]]", country)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**tags:**")
+	check(err)
+	for _, genre := range movie.Genres {
+		_, err = fmt.Fprintf(w, " [[%s]]", genre)
+		check(err)
+	}
+	_, err = fmt.Fprintf(w, "\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "**[wikipedia](%s)**\n", movie.WikipediaUrl)
+		check(err)
+	_, err = fmt.Fprintf(w, "**[kinopoisk](%s)**\n", movie.KinopoiskUrl)
+		check(err)
+	_, err = fmt.Fprintf(w, "**[kino.mail](%s)**\n", movie.MailUrl)
+		check(err)
+
+    _, err = fmt.Fprintf(w, "\n---\n\n")
+    check(err)
+
+	_, err = fmt.Fprintf(w, "## Summary\n")
+	check(err)
+	_, err = fmt.Fprintf(w, "%s\n\n", movie.Summary)
+	check(err)
+	_, err = fmt.Fprintf(w, "## Main ideas\n\n")
+	check(err)
+	_, err = fmt.Fprintf(w, "## What attracted attention\n\n")
+	check(err)
+	_, err = fmt.Fprintf(w, "## Who might be interested\n\n")
+	check(err)
+
+	_, err = fmt.Fprintf(w, "## Links\n\n")
+	check(err)
+
+
+    w.Flush()
 }
 
 func firstRune(str string) (r rune) {
@@ -145,7 +272,7 @@ func VisitWikipedia(link string) Movie {
 			})
 		}
 		if strings.Contains(title, "Автор") && strings.Contains(title, "сценария") {
-			e.ForEach("td span > a", func(i int, a *colly.HTMLElement) {
+			e.ForEach("td span", func(i int, a *colly.HTMLElement) {
 				html, _ := a.DOM.Html()
 				movie.Screenwriters = ParseList(html)
 			})
@@ -163,7 +290,7 @@ func VisitWikipedia(link string) Movie {
 				}
 			})
 		}
-		if title == "Год" {
+		if title == "Год" || title == "Премьера" {
 			r, _ := regexp.Compile("[0-9][0-9][0-9][0-9]")
 			e.ForEachWithBreak("td a", func(i int, a *colly.HTMLElement) bool {
 				s := r.FindString(a.Text)
@@ -249,53 +376,10 @@ func ScrapeMovie(query string) Movie {
 	return ScrapeMovieInner(wikipedia, kinopoisk, mail)
 }
 
-/*type SearchWikiResult struct {
-	Url     string
-	Title   string
-	Summary string
-}
-
-func SearchWiki(query string) string {
-	var res []SearchWikiResult
-
-	c := colly.NewCollector(
-		colly.AllowedDomains("en.wikipedia.org"),
-	)
-
-	c.Limit(&colly.LimitRule{
-		// Filter domains affected by this rule
-		DomainGlob: "en.wikipedia.org/*",
-		// Set a delay between requests to these domains
-		Delay: 1 * time.Second,
-		// Add an additional random delay
-		RandomDelay: 1 * time.Second,
-	})
-
-	c.OnHTML(".jump-to-nav", func(e *colly.HTMLElement) {
-		fmt.Printf("!!! \n")
-	})
-
-	c.OnError(func(_ *colly.Response, err error) {
-		fmt.Printf("Something went wrong: %v\n", err)
-	})
-
-	q := "https://en.wikipedia.org/w/index.php?search=" + query + "&ns0=1"
-	fmt.Printf("query: %s\n", q)
-	c.Visit(q)
-	fmt.Printf("finish\n")
-
-	for _, r := range res {
-		fmt.Printf("Title: %s\n", r.Title)
-		fmt.Printf("Url:   %s\n", r.Url)
-	}
-
-	return q
-}*/
-
 func main() {
 	var movie Movie
 
-   	movie = ScrapeMovie("9 ярдов")
+/*   	movie = ScrapeMovie("9 ярдов")
   	movie.Print()
 
 	fmt.Println("---")
@@ -303,8 +387,8 @@ func main() {
   	movie = ScrapeMovie("Крепкий орешек 1988")
   	movie.Print()
 
-	fmt.Println("---")
+	fmt.Println("---")*/
 
-  	movie = ScrapeMovie("Белоснежка (1937)")
-  	movie.Print()
+  	movie = ScrapeMovie(os.Args[1])
+  	movie.PrintMarkdown()
 }
