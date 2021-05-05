@@ -18,6 +18,8 @@ import (
 )
 
 type Movie struct {
+	Type          string
+	FileName      string
 	Name          string
 	InitName      string
 	PosterUrl     string
@@ -70,16 +72,19 @@ func check(e error) {
 }
 
 var Translations = map[string]string{
-	"Канада":      "Canada",
-	"США":         "USA",
-	"драма":       "drama",
-	"комедия":     "comedy",
-	"мелодрама":   "melodrama",
-	"мультфильм":  "cartoon",
-	"мюзикл":      "musical",
-	"приключения": "adventures",
-	"семейный":    "family",
-	"фэнтези":     "fantasy",
+	"Канада":              "Canada",
+	"США":                 "USA",
+	"детектив":            "detective",
+	"драма":               "drama",
+	"комедия":             "comedy",
+	"мелодрама":           "melodrama",
+	"мультфильм":          "cartoon",
+	"мюзикл":              "musical",
+	"приключения":         "adventures",
+	"семейный":            "family",
+	"стимпанк":            "steampunk",
+	"фэнтези":             "fantasy",
+	"юридический триллер": "legal thriller",
 }
 
 func PrintList(w *bufio.Writer, title string, lst []string) {
@@ -105,8 +110,8 @@ func PrintList(w *bufio.Writer, title string, lst []string) {
 }
 
 func (movie *Movie) PrintMarkdown() {
-	name := movie.InitName + " (" + movie.Year + ").md"
-	f, err := os.Create(name)
+	movie.FileName = movie.InitName + " (" + movie.Year + ").md"
+	f, err := os.Create(movie.FileName)
 	check(err)
 	defer f.Close()
 
@@ -114,7 +119,7 @@ func (movie *Movie) PrintMarkdown() {
 
 	_, err = fmt.Fprintf(w, "---\n")
 	check(err)
-	_, err = fmt.Fprintf(w, "created: %s\n", time.Now().Format("2006.01.02 15:04"))
+	_, err = fmt.Fprintf(w, "created: %s\n", time.Now().Format("2006-01-02 15:04"))
 	check(err)
 	_, err = fmt.Fprintf(w, "alias: \"%s (%s)\"\n", movie.Name, movie.Year)
 	check(err)
@@ -132,7 +137,7 @@ func (movie *Movie) PrintMarkdown() {
 	check(err)
 	_, err = fmt.Fprintf(w, "**year:** #y%s\n", movie.Year)
 	check(err)
-	_, err = fmt.Fprintf(w, "**type:** #movie\n")
+	_, err = fmt.Fprintf(w, "**type:** #%s\n", movie.Type)
 	check(err)
 	_, err = fmt.Fprintf(w, "**status:** #inbox\n")
 	check(err)
@@ -207,6 +212,7 @@ func VisitWikipedia(link string) Movie {
 
 	var movie Movie
 
+	movie.Type = "movie"
 	movie.WikipediaUrl = link
 
 	c := colly.NewCollector(
@@ -260,13 +266,20 @@ func VisitWikipedia(link string) Movie {
 		title := e.ChildText("th")
 		if title == "Жанр" {
 			e.ForEach("td a[href]", func(i int, a *colly.HTMLElement) {
+				if strings.HasPrefix(a.Text, "[") {
+					return
+				}
 				trans := Translations[a.Text]
 				if len(trans) == 0 {
+					fmt.Printf("can't translate: %s\n", a.Text)
 					movie.Genres = append(movie.Genres, a.Text)
 				} else {
 					movie.Genres = append(movie.Genres, trans+"|"+a.Text)
 				}
 			})
+		}
+		if title == "Сезонов" {
+			movie.Type = "serial"
 		}
 		if title == "Режиссёр" {
 			e.ForEach("td span", func(i int, a *colly.HTMLElement) {
@@ -297,6 +310,7 @@ func VisitWikipedia(link string) Movie {
 				if a.Text != "" {
 					trans := Translations[a.Text]
 					if len(trans) == 0 {
+						fmt.Printf("can't translate: %s\n", a.Text)
 						movie.Countries = append(movie.Countries, a.Text)
 					} else {
 						movie.Countries = append(movie.Countries, trans+"|"+a.Text)
@@ -315,15 +329,27 @@ func VisitWikipedia(link string) Movie {
 				return true
 			})
 		}
+		if title == "На экранах" {
+			r, _ := regexp.Compile("[0-9][0-9][0-9][0-9]")
+			e.ForEachWithBreak("td", func(i int, a *colly.HTMLElement) bool {
+				s := r.FindString(a.Text)
+				if s != "" {
+					movie.Year = s
+					return false
+				}
+				return true
+			})
+		}
 	})
 
 	c.Visit(movie.WikipediaUrl)
 	return movie
 }
 
-func VisitKinoMail(link string) string {
+func VisitKinoMail(link string) (string, string) {
 
 	var summary string
+	var picture string
 
 	c := colly.NewCollector(
 		colly.AllowedDomains("kino.mail.ru"),
@@ -342,8 +368,12 @@ func VisitKinoMail(link string) string {
 		summary = e.Text
 	})
 
+	c.OnHTML("div.p-movie-info img.p-picture__image[src]", func(e *colly.HTMLElement) {
+		picture = e.Attr("src")
+	})
+
 	c.Visit(link)
-	return summary
+	return summary, picture
 }
 
 func SearchGoogle(query string, site string) string {
@@ -369,13 +399,17 @@ func SearchGoogle(query string, site string) string {
 
 func ScrapeMovieInner(wikipedia string, kinopoisk string, mail string) Movie {
 	var movie Movie
+	var pic string
 
 	w, _ := url.QueryUnescape(wikipedia)
 	movie = VisitWikipedia(w)
 	movie.WikipediaUrl = w
 	movie.KinopoiskUrl = kinopoisk
 	movie.MailUrl = mail
-	movie.Summary = VisitKinoMail(mail)
+	movie.Summary, pic = VisitKinoMail(mail)
+	if len(movie.PosterUrl) == 0 {
+		movie.PosterUrl = pic
+	}
 	return movie
 }
 
@@ -405,4 +439,5 @@ func main() {
 
 	movie = ScrapeMovie(os.Args[1])
 	movie.PrintMarkdown()
+	fmt.Println("file \"" + movie.FileName + "\" created")
 }
