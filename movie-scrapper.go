@@ -79,15 +79,8 @@ var Translations = map[string]string{
 	"мюзикл":      "musical",
 	"приключения": "adventures",
 	"семейный":    "family",
+	"фэнтези":     "fantasy",
 }
-
-/* func Translate(s string) string {
-	str, prs := Translations[s]
-	if prs {
-		return str
-	}
-	return ""
-} */
 
 func PrintList(w *bufio.Writer, title string, lst []string) {
 	if len(lst) == 0 {

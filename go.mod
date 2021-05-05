@@ -1,4 +1,4 @@
-module example.com/movie-scrapper
+module github.com/jupy/movie-scrapper
 
 go 1.16
 
