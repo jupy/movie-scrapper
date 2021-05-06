@@ -80,10 +80,14 @@ var Translations = map[string]string{
 	"мелодрама":           "melodrama",
 	"мультфильм":          "cartoon",
 	"мюзикл":              "musical",
+	"научная фантастика":  "science fiction",
+	"приключение":         "adventures",
 	"приключения":         "adventures",
 	"семейный":            "family",
+	"сказка":              "fairy tale",
 	"стимпанк":            "steampunk",
 	"фэнтези":             "fantasy",
+	"экранизация":         "film adaptation",
 	"юридический триллер": "legal thriller",
 }
 
@@ -229,7 +233,9 @@ func VisitWikipedia(link string) Movie {
 	})
 
 	c.OnHTML(".infobox tbody tr:nth-child(1)", func(e *colly.HTMLElement) {
-		movie.Name = e.Text
+		if (len(movie.Name) == 0) {
+			movie.Name = e.Text
+		}
 	})
 
 	c.OnHTML(".infobox tbody tr:nth-child(2)", func(e *colly.HTMLElement) {
@@ -252,14 +258,18 @@ func VisitWikipedia(link string) Movie {
 			})
 			s = s + ", The"
 		}
-		movie.InitName = s
+		if (len(movie.InitName) == 0) {
+			movie.InitName = s
+		}
 	})
 
 	c.OnHTML(".infobox-image a img[srcset]", func(e *colly.HTMLElement) {
 		link := e.Attr("srcset")
 		decodedLink, _ := url.QueryUnescape(link)
 		v := strings.Split(decodedLink, " ")
-		movie.PosterUrl = "https:" + v[0]
+		if (len(movie.PosterUrl) == 0) {
+			movie.PosterUrl = "https:" + v[0]
+		}
 	})
 
 	c.OnHTML(".infobox tbody tr", func(e *colly.HTMLElement) {
@@ -267,6 +277,9 @@ func VisitWikipedia(link string) Movie {
 		if title == "Жанр" {
 			e.ForEach("td a[href]", func(i int, a *colly.HTMLElement) {
 				if strings.HasPrefix(a.Text, "[") {
+					return
+				}
+				if a.Text == "экранизация" {
 					return
 				}
 				trans := Translations[a.Text]
@@ -320,7 +333,7 @@ func VisitWikipedia(link string) Movie {
 		}
 		if title == "Год" || title == "Премьера" {
 			r, _ := regexp.Compile("[0-9][0-9][0-9][0-9]")
-			e.ForEachWithBreak("td a", func(i int, a *colly.HTMLElement) bool {
+			e.ForEachWithBreak("td", func(i int, a *colly.HTMLElement) bool {
 				s := r.FindString(a.Text)
 				if s != "" {
 					movie.Year = s
