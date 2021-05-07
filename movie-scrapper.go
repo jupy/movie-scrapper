@@ -233,7 +233,7 @@ func VisitWikipedia(link string) Movie {
 	})
 
 	c.OnHTML(".infobox tbody tr:nth-child(1)", func(e *colly.HTMLElement) {
-		if len(movie.Name) == 0 {
+		if movie.Name == "" {
 			movie.Name = e.Text
 		}
 	})
