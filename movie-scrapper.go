@@ -73,6 +73,7 @@ func check(e error) {
 
 var Translations = map[string]string{
 	"Канада":              "Canada",
+	"СССР":                "USSR",
 	"США":                 "USA",
 	"детектив":            "detective",
 	"драма":               "drama",
@@ -114,7 +115,6 @@ func PrintList(w *bufio.Writer, title string, lst []string) {
 }
 
 func (movie *Movie) PrintMarkdown() {
-	movie.FileName = movie.InitName + " (" + movie.Year + ").md"
 	f, err := os.Create(movie.FileName)
 	check(err)
 	defer f.Close()
@@ -233,7 +233,7 @@ func VisitWikipedia(link string) Movie {
 	})
 
 	c.OnHTML(".infobox tbody tr:nth-child(1)", func(e *colly.HTMLElement) {
-		if (len(movie.Name) == 0) {
+		if len(movie.Name) == 0 {
 			movie.Name = e.Text
 		}
 	})
@@ -258,8 +258,8 @@ func VisitWikipedia(link string) Movie {
 			})
 			s = s + ", The"
 		}
-		if (len(movie.InitName) == 0) {
-			movie.InitName = s
+		if movie.InitName == "" {
+			movie.InitName = strings.TrimSpace(s)
 		}
 	})
 
@@ -267,7 +267,7 @@ func VisitWikipedia(link string) Movie {
 		link := e.Attr("srcset")
 		decodedLink, _ := url.QueryUnescape(link)
 		v := strings.Split(decodedLink, " ")
-		if (len(movie.PosterUrl) == 0) {
+		if len(movie.PosterUrl) == 0 {
 			movie.PosterUrl = "https:" + v[0]
 		}
 	})
@@ -423,6 +423,12 @@ func ScrapeMovieInner(wikipedia string, kinopoisk string, mail string) Movie {
 	if len(movie.PosterUrl) == 0 {
 		movie.PosterUrl = pic
 	}
+
+	name := strings.TrimSpace(movie.InitName)
+	if name == "" {
+		name = movie.Name
+	}
+	movie.FileName = name + " (" + movie.Year + ").md"
 	return movie
 }
 
@@ -440,17 +446,15 @@ func ScrapeMovie(query string) Movie {
 func main() {
 	var movie Movie
 
-	/*   	movie = ScrapeMovie("9 ярдов")
-	  	movie.Print()
-
-		fmt.Println("---")
-
-	  	movie = ScrapeMovie("Крепкий орешек 1988")
-	  	movie.Print()
-
-		fmt.Println("---")*/
-
+	reader := bufio.NewReader(os.Stdin)
 	movie = ScrapeMovie(os.Args[1])
-	movie.PrintMarkdown()
-	fmt.Println("file \"" + movie.FileName + "\" created")
+	movie.Print()
+	fmt.Printf("=======\n")
+	fmt.Printf("Save markdown file \"" + movie.FileName + "\"? (yes/no)> [yes]")
+	text, _ := reader.ReadString('\n')
+	text = strings.TrimSuffix(text, "\n")
+	if text == "" || text == "yes" {
+		movie.PrintMarkdown()
+		fmt.Println("file \"" + movie.FileName + "\" created")
+	}
 }
