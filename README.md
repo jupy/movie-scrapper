@@ -1,1 +1,1 @@
-# wiki-movie-scrapper
+# movie-scrapper
