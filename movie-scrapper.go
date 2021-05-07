@@ -169,7 +169,7 @@ func (movie *Movie) PrintMarkdown() {
 	check(err)
 	_, err = fmt.Fprintf(w, "%s\n\n", movie.Summary)
 	check(err)
-	_, err = fmt.Fprintf(w, "## Main ideas\n\n")
+	_, err = fmt.Fprintf(w, "## Review\n\n")
 	check(err)
 	_, err = fmt.Fprintf(w, "## What attracted attention\n\n")
 	check(err)
