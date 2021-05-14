@@ -390,8 +390,8 @@ func VisitKinoMail(link string) (string, string) {
 }
 
 func SearchGoogle(query string, site string) string {
-	s := "-w " + site
-	out, err := exec.Command("googler", "-n 1", "--np", "--json", s, query).Output()
+	/*s := "-w " + site*/
+	out, err := exec.Command("googler", "-n", "1", "--np", "-w", site, "--json", query).Output()
 	if err != nil {
 		log.Fatal(err)
 		panic(err)
